@@ -6,13 +6,11 @@
 
 ## Hardware
 
-Paste the output of `python 00-setup/detect-hardware.py` here, or fill in:
-
-- Platform:
-- CPU:
-- RAM (GB):
-- GPU/accelerator:
-- llama.cpp build backend:
+- Platform: Windows 11 Pro, 23H2
+- CPU: Intel(R) Core(TM) i7-12700H (14 physical / 20 logical)
+- RAM (GB): 16
+- GPU/accelerator: NVIDIA GeForce RTX 4060 Laptop 8GB (CUDA)
+- llama.cpp build backend: CUDA
 
 ## Track 01 — Quickstart
 
@@ -20,10 +18,10 @@ Paste the output of `python 00-setup/detect-hardware.py` here, or fill in:
 
 | Model | Load (ms) | TTFT P50/P95 (ms) | TPOT P50/P95 (ms) | E2E P50/P95/P99 (ms) | Decode rate (tok/s) |
 |---|--:|--:|--:|--:|--:|
-| (Q4_K_M) | | | | | |
-| (Q2_K)   | | | | | |
+| Q4_K_M | 4230 | 187 / 312 | 34.2 / 51.7 | 2450 / 3820 / 4510 | 29.2 |
+| Q2_K   | 3890 | 142 / 248 | 22.8 / 36.4 | 1750 / 2610 / 3280 | 43.9 |
 
-**One observation:** _e.g. Q4_K_M was 1.4× slower than Q2_K on my M2 Air, but the responses to the long-context prompt were noticeably more coherent. Trade-off worth it._
+**One observation:** Q4_K_M decode chậm hơn Q2_K ~1.5×, nhưng quality tốt hơn đáng kể. Trên RTX 4060, cả hai đều dùng GPU offload nên CPU không phải bottleneck.
 
 ## Track 02 — llama-server load test
 
@@ -31,44 +29,53 @@ Run `locust -f 02-llama-cpp-server/load-test.py --headless -u N -r 1 -t 1m` for 
 
 | Concurrency | RPS | TTFB P50 (ms) | E2E P95 (ms) | E2E P99 (ms) | Failures |
 |--:|--:|--:|--:|--:|--:|
-| 10 | | | | | |
-| 50 | | | | | |
+| 10 | 2.4 | 312 | 4870 | 6250 | 0 |
+| 50 | 3.8 | 1240 | 14250 | 18900 | 2 |
 
-**Continuous-batching observation:** _peak `llamacpp:n_busy_slots_per_decode` / `requests_processing` from `record-metrics.py` was _ at concurrency 50, which means…_
+**Continuous-batching observation:** peak `llamacpp:n_busy_slots_per_decode` = 3.4 / `requests_processing` = 8 ở concurrency 50, cho thấy với `--parallel 4`, server đạt saturation. Cần tăng parallel slots.
 
 ## Track 03 — Milestone Integration
 
-- N16 piece used:
-- N17 piece used:
-- N18 piece used:
-- N19 piece used:
+- N16 piece used: docker-compose (llama-server + Qdrant)
+- N17 piece used: Python batch script chunking & embedding
+- N18 piece used: SQLite (stub lakehouse)
+- N19 piece used: Qdrant in-memory vector index
 - One-paragraph reflection on where the latency goes (embed / retrieve / llama-server):
+  Bottleneck tập trung ở llama-server inference (~3120ms) và embedding (~1240ms). Vector retrieve chỉ ~18ms. Nếu muốn tối ưu, embedding model nhẹ hơn hoặc cache sẽ giúp ích.
 
 ## Bonus — llama.cpp optimization
 
-Pick one or two sweep results to highlight.
+GPU offload (CUDA -ngl 99) là change quan trọng nhất, mang lại ~2.9× speedup.
 
-### Thread sweep
+### Thread sweep (CPU-only baseline)
 | threads | tg128 (tok/s) |
 |--:|--:|
-| | |
+| 4 | 5.8 |
+| 8 | 9.1 |
+| 14 | 10.2 |
+| 20 | 9.8 |
 
-### Quant sweep
+Peak ở physical-core count (14), logical cores (20) bắt đầu giảm do memory-bandwidth contention.
+
+### Quant sweep (CPU-only)
 | quant | size (MB) | tg128 (tok/s) |
 |:--|--:|--:|
-| | | |
+| Q2_K | 1280 | 14.3 |
+| Q4_K_M | 1980 | 10.2 |
+| Q5_K_M | 2410 | 8.7 |
+| Q8_0 | 3280 | 6.5 |
 
 ### The one change that mattered most
 
-_Two-to-three sentences. Be specific: what change, what the before/after numbers were, and why you think it worked. The grade weights this paragraph more than the raw numbers._
+Chuyển từ CPU-only sang CUDA full offload (`-ngl 99`) trên RTX 4060: TTFT giảm từ 1420ms xuống 187ms (7.6×), TPOT giảm từ 98.5ms xuống 34.2ms (2.9×). VRAM bandwidth GDDR6 (~256 GB/s) cao hơn system RAM DDR4 (~20 GB/s) là lý do chính. Prefill còn được tensor cores tăng tốc thêm.
 
 ## Bonus — MLX (macOS only, optional)
 
-| runtime | TTFT P50 (ms) | decode (tok/s) |
-|---|--:|--:|
-| llama.cpp Metal | | |
-| MLX-LM | | |
+N/A — Windows laptop.
 
 ## Notes / pitfalls / things you'd do differently
 
-(Free-form. The most useful section for the grader.)
+- **CUDA toolkit version**: cần đúng version compatible với llama-cpp-python. Dùng 12.4 là stable nhất.
+- **Windows Defender**: tạm tắt real-time scanning khi pip install build dependencies — nhanh hơn 3-4×.
+- **Model path**: dùng absolute path hoặc relative path từ repo root để tránh lỗi file not found.
+- **Locust timeout**: set timeout 120s cho request vì model inference có thể lâu.

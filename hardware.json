@@ -1,0 +1,39 @@
+{
+  "cpu": {
+    "arch": "AMD64",
+    "cores_logical": 16,
+    "model": "Intel(R) Core(TM) i7-12700H",
+    "cores_physical": 14,
+    "avx2": true,
+    "avx512": false,
+    "neon": false
+  },
+  "ram_gb": 16.0,
+  "gpu": {
+    "backends": {
+      "nvidia_cuda": true,
+      "amd_rocm": false,
+      "apple_metal": false,
+      "vulkan": true,
+      "cpu_only": false
+    },
+    "details": {
+      "nvidia": "NVIDIA GeForce RTX 4060 Laptop GPU, 8188 MiB"
+    }
+  },
+  "docker": {
+    "docker": true,
+    "compose": true
+  },
+  "recommendation": {
+    "recommended_paths": [
+      "01-llama-cpp-quickstart",
+      "02-llama-cpp-server",
+      "03-milestone-integration",
+      "BONUS-llama-cpp-optimization"
+    ],
+    "recommended_model": "Llama-3.2-3B-Instruct (Q4_K_M)",
+    "llama_cpp_backend": "CUDA",
+    "llama_cpp_cmake_flag": "-DGGML_CUDA=on"
+  }
+}
